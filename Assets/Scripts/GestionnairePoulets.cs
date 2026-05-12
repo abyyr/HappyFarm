@@ -6,8 +6,8 @@ public class GestionnairePoulets : MonoBehaviour
 {
     public static GestionnairePoulets instance;
 
-    [Header("Paramètres")]
-    public string nourritureRequise = "Blé";
+    [Header("Parametres")]
+    public string nourritureRequise = "Ble";
     public int nourritureParPoulet = 2;
     public int piecesParOeuf = 5;
 
@@ -16,14 +16,12 @@ public class GestionnairePoulets : MonoBehaviour
     public GameObject boutonRamasserPrefab;
     public Canvas canvas;
 
-    // Boutons uniques
     private GameObject monBoutonNourrir;
     private GameObject monBoutonRamasser;
     private Camera mainCamera;
     private bool playerDedans = false;
     private Transform playerTransform;
 
-    // Tous les poulets
     private Poulet[] tousLesPoulets;
 
     void Awake()
@@ -34,12 +32,9 @@ public class GestionnairePoulets : MonoBehaviour
     void Start()
     {
         mainCamera = Camera.main;
-
-        // Trouve tous les poulets
         tousLesPoulets = FindObjectsOfType<Poulet>();
-        Debug.Log("Poulets trouvés : " + tousLesPoulets.Length);
+        Debug.Log("Poulets trouves : " + tousLesPoulets.Length);
 
-        // Crée bouton Nourrir
         if (boutonNourririPrefab != null && canvas != null)
         {
             monBoutonNourrir = Instantiate(boutonNourririPrefab, canvas.transform);
@@ -48,7 +43,6 @@ public class GestionnairePoulets : MonoBehaviour
             if (btn != null) btn.onClick.AddListener(NourririTousLesPoulets);
         }
 
-        // Crée bouton Ramasser
         if (boutonRamasserPrefab != null && canvas != null)
         {
             monBoutonRamasser = Instantiate(boutonRamasserPrefab, canvas.transform);
@@ -77,16 +71,15 @@ public class GestionnairePoulets : MonoBehaviour
             playerTransform.position + Vector3.up * 2f
         );
 
-        // Bouton Nourrir
         if (monBoutonNourrir != null)
         {
-            bool aDesNonNourris = ADesPouleisNonNourris();
+            // CORRECTION : nom de fonction sans caracteres speciaux
+            bool aDesNonNourris = ADesPouletsNonNourris();
             bool afficher = playerDedans && aDesNonNourris;
             monBoutonNourrir.SetActive(afficher);
             if (afficher && posEcran.z > 0)
                 monBoutonNourrir.transform.position = posEcran;
 
-            // Met à jour le texte avec le nombre de poulets
             TextMeshProUGUI tmp = monBoutonNourrir
                 .GetComponentInChildren<TextMeshProUGUI>();
             if (tmp != null)
@@ -103,16 +96,14 @@ public class GestionnairePoulets : MonoBehaviour
             }
         }
 
-        // Bouton Ramasser
         if (monBoutonRamasser != null)
         {
-            bool aDesOeufs = ADesOeufsAramasser();
+            bool aDesOeufs = ADesOeufsARamasser();
             bool afficher = playerDedans && aDesOeufs;
             monBoutonRamasser.SetActive(afficher);
             if (afficher && posEcran.z > 0)
                 monBoutonRamasser.transform.position = posEcran;
 
-            // Met à jour texte
             TextMeshProUGUI tmp = monBoutonRamasser
                 .GetComponentInChildren<TextMeshProUGUI>();
             if (tmp != null)
@@ -135,7 +126,6 @@ public class GestionnairePoulets : MonoBehaviour
             if (poulet == null) continue;
             if (poulet.EstNourri()) continue;
 
-            // Assez de nourriture ?
             if (stock >= nourritureParPoulet)
             {
                 GestionnaireArgent.instance.UtiliserRecolte(
@@ -144,10 +134,7 @@ public class GestionnairePoulets : MonoBehaviour
                 stock -= nourritureParPoulet;
                 pouletsNourris++;
             }
-            else
-            {
-                break; // Plus assez de nourriture
-            }
+            else break;
         }
 
         Debug.Log(pouletsNourris + " poulet(s) nourri(s) !");
@@ -170,11 +157,12 @@ public class GestionnairePoulets : MonoBehaviour
         {
             GestionnaireArgent.instance.AjouterRecolte("Oeuf", totalOeufs);
             GestionnaireArgent.instance.AjouterPieces(totalOeufs * piecesParOeuf);
-            Debug.Log("Total oeufs ramassés : " + totalOeufs);
+            Debug.Log("Total oeufs ramasses : " + totalOeufs);
         }
     }
 
-    bool ADesPouleisNonNourris()
+    // CORRECTION : nom corrige en ASCII pur
+    bool ADesPouletsNonNourris()
     {
         foreach (Poulet poulet in tousLesPoulets)
         {
@@ -184,7 +172,7 @@ public class GestionnairePoulets : MonoBehaviour
         return false;
     }
 
-    bool ADesOeufsAramasser()
+    bool ADesOeufsARamasser()
     {
         foreach (Poulet poulet in tousLesPoulets)
         {

@@ -1,47 +1,35 @@
 using UnityEngine;
-using UnityEngine.UI;
 using TMPro;
+using System;
 
 public class Client : MonoBehaviour
 {
-    [Header("Paramètres")]
+    [Header("Parametres")]
     public float vitesse = 3f;
-    public float tempsAttente = 3f;
+    public float tempsAttente = 5f;
 
-    public enum EtatClient
-    {
-        Marche,
-        Attente,
-        Achete,
-        Repart
-    }
+    [Header("Points")]
+    public Transform pointFile;
+    public Transform pointSortie;
 
-    public EtatClient etat = EtatClient.Marche;
-
-    private string produitDemande;
-    private int quantiteDemandee;
-
-    private GameObject maBulle;
-    private Camera mainCamera;
-
-    private Vector3 positionFile;
-    private Vector3 positionDepart;
-    private float tempsAttenteActuel = 0f;
-
-    [Header("Prefabs")]
+    [Header("UI")]
     public GameObject bullePrefab;
     public Canvas canvas;
 
-    private bool pret = false; // IX
+    public enum EtatClient { Marche, Attente, Achete, Repart }
+    public EtatClient etat = EtatClient.Marche;
+
+    public Action OnClientTermine;
+
+    private string produitDemande;
+    private int quantiteDemandee;
+    private float tempsAttenteActuel = 0f;
+    private GameObject maBulle;
+    private Camera mainCamera;
 
     void Start()
     {
         mainCamera = Camera.main;
-
-        if (SpawnerClients.instance != null)
-            positionDepart = SpawnerClients.instance.GetPointSortie();
-        else
-            positionDepart = transform.position + Vector3.back * 10f;
 
         if (bullePrefab != null && canvas != null)
         {
@@ -52,25 +40,12 @@ public class Client : MonoBehaviour
 
     void Update()
     {
-        if (!pret) return; // IX : attend SetPositionFile
-
         switch (etat)
         {
-            case EtatClient.Marche:
-                MarcherVersFile();
-                break;
-
-            case EtatClient.Attente:
-                Attendre();
-                break;
-
-            case EtatClient.Achete:
-                Acheter();
-                break;
-
-            case EtatClient.Repart:
-                Repartir();
-                break;
+            case EtatClient.Marche: MarcherVersFile(); break;
+            case EtatClient.Attente: Attendre(); break;
+            case EtatClient.Achete: Acheter(); break;
+            case EtatClient.Repart: Repartir(); break;
         }
 
         MettreAJourBulle();
@@ -78,13 +53,26 @@ public class Client : MonoBehaviour
 
     void MarcherVersFile()
     {
-        Vector3 direction = (positionFile - transform.position).normalized;
-        transform.position += direction * vitesse * Time.deltaTime;
-        transform.LookAt(positionFile);
+        if (pointFile == null) return;
 
-        if (Vector3.Distance(transform.position, positionFile) < 0.3f)
+        Vector3 cible = new Vector3(
+            pointFile.position.x,
+            transform.position.y,
+            pointFile.position.z
+        );
+
+        transform.position = Vector3.MoveTowards(
+            transform.position, cible, vitesse * Time.deltaTime
+        );
+
+        Vector3 dir = cible - transform.position;
+        dir.y = 0;
+        if (dir != Vector3.zero)
+            transform.rotation = Quaternion.LookRotation(dir);
+
+        if (Vector3.Distance(transform.position, cible) < 0.3f)
         {
-            transform.position = positionFile;
+            transform.position = cible;
             etat = EtatClient.Attente;
             GenererCommande();
         }
@@ -93,7 +81,6 @@ public class Client : MonoBehaviour
     void Attendre()
     {
         tempsAttenteActuel += Time.deltaTime;
-
         if (tempsAttenteActuel >= tempsAttente)
         {
             etat = EtatClient.Achete;
@@ -103,48 +90,57 @@ public class Client : MonoBehaviour
 
     void Acheter()
     {
-        if (Stand.instance == null)
+        if (Stand.instance != null)
         {
-            Debug.LogWarning("Stand.instance est null !");
-            etat = EtatClient.Repart;
-            return;
+            if (Stand.instance.VendreProduit(produitDemande, quantiteDemandee))
+                Debug.Log("Client satisfait !");
+            else
+                Debug.Log("Stock insuffisant !");
         }
-
-        if (Stand.instance.VendreProduit(produitDemande, quantiteDemandee))
-        {
-            Debug.Log("Client satisfait ! Vendu " + quantiteDemandee + " " + produitDemande);
-        }
-        else
-        {
-            Debug.Log("Stock insuffisant — client déçu !");
-        }
-
         etat = EtatClient.Repart;
-
-        if (SpawnerClients.instance != null)
-            SpawnerClients.instance.ClientTermine(this);
     }
 
     void Repartir()
     {
-        if (maBulle != null)
-            maBulle.SetActive(false);
+        if (maBulle != null) maBulle.SetActive(false);
 
-        Vector3 direction = (positionDepart - transform.position).normalized;
-        transform.position += direction * vitesse * Time.deltaTime;
-        transform.LookAt(positionDepart);
-
-        if (Vector3.Distance(transform.position, positionDepart) < 0.5f)
+        if (pointSortie == null)
         {
-            Destroy(gameObject);
+            Terminer();
+            return;
         }
+
+        Vector3 cible = new Vector3(
+            pointSortie.position.x,
+            transform.position.y,
+            pointSortie.position.z
+        );
+
+        transform.position = Vector3.MoveTowards(
+            transform.position, cible, vitesse * Time.deltaTime
+        );
+
+        Vector3 dir = cible - transform.position;
+        dir.y = 0;
+        if (dir != Vector3.zero)
+            transform.rotation = Quaternion.LookRotation(dir);
+
+        if (Vector3.Distance(transform.position, cible) < 0.5f)
+            Terminer();
+    }
+
+    void Terminer()
+    {
+        OnClientTermine?.Invoke();
+        Destroy(gameObject);
     }
 
     void GenererCommande()
     {
-        string[] produits = { "Blé", "Oeuf", "Tomate", "Maïs", "Carotte" };
-        produitDemande = produits[Random.Range(0, produits.Length)];
-        quantiteDemandee = Random.Range(1, 4);
+        string[] produits = { "Ble", "Oeuf", "Tomate", "Mais", "Carotte" };
+        // correction : UnityEngine.Random explicite
+        produitDemande = produits[UnityEngine.Random.Range(0, produits.Length)];
+        quantiteDemandee = UnityEngine.Random.Range(1, 4);
 
         if (maBulle != null)
         {
@@ -165,20 +161,7 @@ public class Client : MonoBehaviour
         Vector3 posEcran = mainCamera.WorldToScreenPoint(
             transform.position + Vector3.up * 2f
         );
-
         if (posEcran.z > 0)
             maBulle.transform.position = posEcran;
-    }
-
-    public void SetPositionFile(Vector3 pos)
-    {
-        positionFile = pos;
-        pret = true; // IX : maintenant le client peut bouger
-    }
-
-    public void SetPrefabs(GameObject bulle, Canvas c)
-    {
-        bullePrefab = bulle;
-        canvas = c;
     }
 }

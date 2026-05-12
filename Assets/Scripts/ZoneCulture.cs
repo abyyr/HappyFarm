@@ -1,11 +1,12 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using System.Collections;
 
 public class ZoneCulture : MonoBehaviour
 {
     [Header("Type de culture")]
-    public string nomCulture = "Blé";
+    public string nomCulture = "Ble";
     public GameObject grainePrefab;
     public int piecesRecolte = 10;
 
@@ -14,11 +15,11 @@ public class ZoneCulture : MonoBehaviour
     public Vector3 tailleDepart = new Vector3(0.2f, 0.2f, 0.2f);
     public Vector3 tailleFin = new Vector3(1f, 1f, 1f);
 
-    [Header("Densité")]
+    [Header("Densite")]
     public float espacement = 0.5f;
     public float offsetAleatoire = 0.2f;
 
-    [Header("Flèche 3D")]
+    [Header("Fleche 3D")]
     public GameObject flechePrefab;
     public float hauteurFleche = 2f;
     public float bounceSpeed = 2f;
@@ -32,16 +33,20 @@ public class ZoneCulture : MonoBehaviour
     public GameObject texteRecolterPrefab;
     public Canvas canvas;
 
-    // État
+    [Header("Animation")]
+    public float delaiRecolte = 2f;
+
+    // Etat
     private bool estPlantee = false;
     private bool estPrete = false;
+    private bool estEnCoursDeRecolte = false;
     private float tempsPlantation = 0f;
     private BoxCollider zoneCollider;
     private bool playerDedans = false;
     private Transform playerTransform;
     private Camera mainCamera;
 
-    // Flèche
+    // Fleche
     private GameObject maFleche;
     private Vector3 flecheBasePos;
 
@@ -66,7 +71,6 @@ public class ZoneCulture : MonoBehaviour
         mainCamera = Camera.main;
         zoneCollider = GetComponent<BoxCollider>();
 
-        // Trouve TexteCompteur
         if (texteCompteur == null)
         {
             GameObject go = GameObject.Find("TexteCompteur");
@@ -74,11 +78,9 @@ public class ZoneCulture : MonoBehaviour
                 texteCompteur = go.GetComponent<TextMeshProUGUI>();
         }
 
-        // Init compteur
         if (!compteurs.ContainsKey(nomCulture))
             compteurs[nomCulture] = 0;
 
-        // Crée la flèche
         if (flechePrefab != null)
         {
             Vector3 centreWorld = transform.TransformPoint(zoneCollider.center);
@@ -88,7 +90,6 @@ public class ZoneCulture : MonoBehaviour
             maFleche.SetActive(false);
         }
 
-        // Crée bouton Planter
         if (boutonPlanterPrefab != null && canvas != null)
         {
             monBoutonPlanter = Instantiate(boutonPlanterPrefab, canvas.transform);
@@ -97,7 +98,6 @@ public class ZoneCulture : MonoBehaviour
             if (btn != null) btn.onClick.AddListener(Planter);
         }
 
-        // Crée bouton Récolter
         if (boutonRecolterPrefab != null && canvas != null)
         {
             monBoutonRecolter = Instantiate(boutonRecolterPrefab, canvas.transform);
@@ -106,7 +106,6 @@ public class ZoneCulture : MonoBehaviour
             if (btn != null) btn.onClick.AddListener(Recolter);
         }
 
-        // Crée barre croissance
         if (barreCroissancePrefab != null && canvas != null)
         {
             maBarreCroissance = Instantiate(barreCroissancePrefab, canvas.transform);
@@ -120,7 +119,6 @@ public class ZoneCulture : MonoBehaviour
             }
         }
 
-        // Crée texte Récolter
         if (texteRecolterPrefab != null && canvas != null)
         {
             monTexteRecolter = Instantiate(texteRecolterPrefab, canvas.transform);
@@ -133,20 +131,18 @@ public class ZoneCulture : MonoBehaviour
         GererFleche();
         GererBoutons();
 
-        // Touche E
-        if (playerDedans && Input.GetKeyDown(KeyCode.E))
+        if (playerDedans && !estEnCoursDeRecolte
+            && Input.GetKeyDown(KeyCode.E))
         {
             if (!estPlantee) Planter();
             else if (estPrete) Recolter();
         }
 
-        // Croissance
         if (estPlantee && !estPrete)
         {
             float progression = (Time.time - tempsPlantation) / tempsPoussee;
             progression = Mathf.Clamp01(progression);
 
-            // Grandir les plantes
             Vector3 tailleActuelle = Vector3.Lerp(tailleDepart, tailleFin, progression);
             foreach (GameObject plante in plantes)
             {
@@ -154,20 +150,21 @@ public class ZoneCulture : MonoBehaviour
                     plante.transform.localScale = tailleActuelle;
             }
 
-            // Barre de progression
             if (slider != null)
             {
                 slider.value = progression;
 
-                Image fill = maBarreCroissance
-                    .transform.Find("Fill Area/Fill")
-                    ?.GetComponent<Image>();
-
-                if (fill != null)
-                    fill.color = Color.Lerp(Color.red, Color.green, progression);
+                // Correction : Find retourne null si le chemin n'existe pas
+                // utiliser un Transform intermediaire pour eviter le crash
+                Transform fillTransform = maBarreCroissance.transform.Find("Fill Area/Fill");
+                if (fillTransform != null)
+                {
+                    Image fill = fillTransform.GetComponent<Image>();
+                    if (fill != null)
+                        fill.color = Color.Lerp(Color.red, Color.green, progression);
+                }
             }
 
-            // Position barre au dessus zone
             if (maBarreCroissance != null && maBarreCroissance.activeSelf)
             {
                 Vector3 centreWorld = transform.TransformPoint(zoneCollider.center);
@@ -178,7 +175,6 @@ public class ZoneCulture : MonoBehaviour
                     maBarreCroissance.transform.position = posEcran;
             }
 
-            // Prête !
             if (progression >= 1f)
             {
                 estPrete = true;
@@ -188,7 +184,6 @@ public class ZoneCulture : MonoBehaviour
             }
         }
 
-        // Clignotement texte Récolter
         if (estPrete && monTexteRecolter != null && monTexteRecolter.activeSelf)
         {
             float alpha = Mathf.Abs(Mathf.Sin(Time.time * 3f));
@@ -200,7 +195,6 @@ public class ZoneCulture : MonoBehaviour
                 tmp.color = c;
             }
 
-            // Position texte au dessus zone
             Vector3 centreWorld = transform.TransformPoint(zoneCollider.center);
             Vector3 posEcran = mainCamera.WorldToScreenPoint(
                 centreWorld + Vector3.up * hauteurFleche
@@ -246,25 +240,22 @@ public class ZoneCulture : MonoBehaviour
             playerTransform.position + Vector3.up * 2f
         );
 
-        // Bouton Planter
         if (monBoutonPlanter != null)
         {
-            bool afficher = playerDedans && !estPlantee;
+            bool afficher = playerDedans && !estPlantee && !estEnCoursDeRecolte;
             monBoutonPlanter.SetActive(afficher);
             if (afficher && posEcran.z > 0)
                 monBoutonPlanter.transform.position = posEcran;
         }
 
-        // Bouton Récolter
         if (monBoutonRecolter != null)
         {
-            bool afficher = playerDedans && estPrete;
+            bool afficher = playerDedans && estPrete && !estEnCoursDeRecolte;
             monBoutonRecolter.SetActive(afficher);
             if (afficher && posEcran.z > 0)
                 monBoutonRecolter.transform.position = posEcran;
         }
 
-        // Barre croissance
         if (maBarreCroissance != null)
             maBarreCroissance.SetActive(estPlantee && !estPrete);
     }
@@ -304,11 +295,7 @@ public class ZoneCulture : MonoBehaviour
     public void Planter()
     {
         if (estPlantee) return;
-        if (grainePrefab == null)
-        {
-            Debug.LogError("Graine Prefab manquant !");
-            return;
-        }
+        if (grainePrefab == null) return;
         if (zoneCollider == null) return;
 
         Vector3 centreWorld = transform.TransformPoint(zoneCollider.center);
@@ -359,11 +346,28 @@ public class ZoneCulture : MonoBehaviour
     public void Recolter()
     {
         if (!estPrete) return;
+        if (estEnCoursDeRecolte) return;
 
-        // Sauvegarde le nombre AVANT de vider
+        estEnCoursDeRecolte = true;
+
+        // Lance animation recolte
+        FarmerAnimator fa = FindObjectOfType<FarmerAnimator>();
+        if (fa != null) fa.JouerRecolte();
+
+        if (monBoutonRecolter != null)
+            monBoutonRecolter.SetActive(false);
+        if (monTexteRecolter != null)
+            monTexteRecolter.SetActive(false);
+
+        StartCoroutine(RecolterApresDelai(delaiRecolte));
+    }
+
+    private IEnumerator RecolterApresDelai(float delai)
+    {
+        yield return new WaitForSeconds(delai);
+
         int nombrePlantes = plantes.Count;
 
-        // Supprime toutes les plantes
         foreach (GameObject plante in plantes)
         {
             if (plante != null)
@@ -371,7 +375,6 @@ public class ZoneCulture : MonoBehaviour
         }
         plantes.Clear();
 
-        // Ajoute pièces ET stock
         if (GestionnaireArgent.instance != null)
         {
             GestionnaireArgent.instance.AjouterPieces(piecesRecolte);
@@ -381,13 +384,12 @@ public class ZoneCulture : MonoBehaviour
         Debug.Log("Recolte ! +" + piecesRecolte
             + " pieces | +" + nombrePlantes + " " + nomCulture);
 
-        // Reset zone
         estPlantee = false;
         estPrete = false;
+        estEnCoursDeRecolte = false;
         playerDedans = false;
         playerTransform = null;
 
-        if (monBoutonRecolter != null) monBoutonRecolter.SetActive(false);
         if (maBarreCroissance != null) maBarreCroissance.SetActive(false);
         if (monTexteRecolter != null) monTexteRecolter.SetActive(false);
     }
