@@ -2,22 +2,40 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-public class ZoneVerrouilee : MonoBehaviour
+/// <summary>
+/// Verrou universel pour n'importe quelle zone.
+/// 
+/// Comment utiliser :
+/// - Pour une culture  : ajoute ZoneVerrouillee + ZoneCulture sur le même GameObject
+/// - Pour une cour     : ajoute ZoneVerrouillee + GestionnaireAnimaux sur le même GameObject
+/// - Pour autre chose  : ajoute ZoneVerrouillee seul
+/// 
+/// ZoneVerrouillee détecte automatiquement les autres scripts présents.
+/// Rien à glisser manuellement !
+/// </summary>
+public class ZoneVerrouillee : MonoBehaviour
 {
-    [Header("Déblocage")]
+    [Header("Déverrouillage")]
     public int coutDeblocage = 50;
     public bool estVerrouillee = true;
 
-    [Header("Prefabs")]
-    public GameObject cadenasPrefab;
-    public GameObject boutonDebloquerPrefab;
-    public GameObject textePasAssezPrefab;
-    public Canvas canvas;
+    [Header("Nom de la zone (affiché dans le bouton)")]
+    public string nomZone = "Zone";
 
-    [Header("Position Cadenas")]
+    [Header("Objets à désactiver quand verrouillé (optionnel)")]
+    [Tooltip("Ex: barrière, panneau. Laisse vide si pas besoin.")]
+    public GameObject[] objetsADesactiver;
+
+    [Header("Cadenas 3D")]
+    public GameObject cadenasPrefab;
     public float hauteurCadenas = 3f;
 
-    // Objets instanciés
+    [Header("UI Canvas")]
+    public Canvas canvas;
+    public GameObject boutonDebloquerPrefab;
+    public GameObject textePasAssezPrefab;
+
+    // --- Privé ---
     private GameObject monCadenas;
     private GameObject monBoutonDebloquer;
     private GameObject monTextePasAssez;
@@ -25,41 +43,70 @@ public class ZoneVerrouilee : MonoBehaviour
     private Transform playerTransform;
     private Camera mainCamera;
 
-    // Composants
-    private ZoneCulture zoneCulture;
+    // Composants détectés automatiquement
+    private MonoBehaviour[] composantsDetectes;
 
     void Start()
     {
         mainCamera = Camera.main;
-        zoneCulture = GetComponent<ZoneCulture>();
 
-        // Désactive ZoneCulture si verrouillée
-        if (zoneCulture != null)
-            zoneCulture.enabled = !estVerrouillee;
+        // Détecte automatiquement tous les autres scripts sur ce GameObject
+        // (ZoneCulture, GestionnaireAnimaux, etc.) sauf ZoneVerrouillee lui-même
+        var tous = GetComponents<MonoBehaviour>();
+        var liste = new System.Collections.Generic.List<MonoBehaviour>();
+        foreach (var comp in tous)
+            if (comp != this) liste.Add(comp);
+        composantsDetectes = liste.ToArray();
 
-        // Crée le cadenas
-        if (cadenasPrefab != null && estVerrouillee)
-        {
-            Vector3 pos = transform.position + Vector3.up * hauteurCadenas;
-            monCadenas = Instantiate(cadenasPrefab, pos, Quaternion.identity);
-        }
+        Debug.Log($"[ZoneVerrouillee] '{nomZone}' : {composantsDetectes.Length} composant(s) détecté(s).");
 
-        // Crée bouton Débloquer
-        if (boutonDebloquerPrefab != null && canvas != null)
+        AppliquerEtatInitial();
+        CreerCadenas();
+        CreerUI();
+    }
+
+    void AppliquerEtatInitial()
+    {
+        // Désactive tous les autres scripts si verrouillé
+        foreach (var comp in composantsDetectes)
+            if (comp != null) comp.enabled = !estVerrouillee;
+
+        // Désactive les objets optionnels
+        foreach (var obj in objetsADesactiver)
+            if (obj != null) obj.SetActive(!estVerrouillee);
+    }
+
+    void CreerCadenas()
+    {
+        if (cadenasPrefab == null || !estVerrouillee) return;
+        Vector3 pos = transform.position + Vector3.up * hauteurCadenas;
+        monCadenas = Instantiate(cadenasPrefab, pos, Quaternion.identity);
+    }
+
+    void CreerUI()
+    {
+        if (canvas == null) return;
+
+        if (boutonDebloquerPrefab != null)
         {
             monBoutonDebloquer = Instantiate(boutonDebloquerPrefab, canvas.transform);
             monBoutonDebloquer.SetActive(false);
-
             Button btn = monBoutonDebloquer.GetComponent<Button>();
-            if (btn != null)
-                btn.onClick.AddListener(TenterDeblocage);
+            if (btn != null) btn.onClick.AddListener(TenterDeblocage);
+
+            TextMeshProUGUI tmp = monBoutonDebloquer.GetComponentInChildren<TextMeshProUGUI>();
+            if (tmp != null)
+                tmp.text = $"[E] Débloquer {nomZone}\n({coutDeblocage} pièces)";
         }
 
-        // Crée texte Pas assez
-        if (textePasAssezPrefab != null && canvas != null)
+        if (textePasAssezPrefab != null)
         {
             monTextePasAssez = Instantiate(textePasAssezPrefab, canvas.transform);
             monTextePasAssez.SetActive(false);
+
+            TextMeshProUGUI tmp = monTextePasAssez.GetComponentInChildren<TextMeshProUGUI>();
+            if (tmp != null)
+                tmp.text = $"Pas assez de pièces ! ({coutDeblocage} requis)";
         }
     }
 
@@ -68,39 +115,32 @@ public class ZoneVerrouilee : MonoBehaviour
         if (!estVerrouillee) return;
 
         GererBouton();
-        GererCadenas();
+        AnimerCadenas();
 
-        // Touche E pour débloquer
         if (playerDedans && Input.GetKeyDown(KeyCode.E))
             TenterDeblocage();
     }
 
-    void GererCadenas()
+    void AnimerCadenas()
     {
-        if (monCadenas == null) return;
-
-        // Rotation du cadenas
-        monCadenas.transform.Rotate(Vector3.up, 45f * Time.deltaTime);
+        if (monCadenas != null)
+            monCadenas.transform.Rotate(Vector3.up, 45f * Time.deltaTime);
     }
 
     void GererBouton()
     {
-        if (monBoutonDebloquer == null) return;
+        if (monBoutonDebloquer == null || playerTransform == null) return;
 
-        if (playerDedans && estVerrouillee && playerTransform != null)
+        bool afficher = playerDedans && estVerrouillee;
+        monBoutonDebloquer.SetActive(afficher);
+
+        if (afficher)
         {
-            monBoutonDebloquer.SetActive(true);
-
             Vector3 posEcran = mainCamera.WorldToScreenPoint(
                 playerTransform.position + Vector3.up * 2f
             );
-
             if (posEcran.z > 0)
                 monBoutonDebloquer.transform.position = posEcran;
-        }
-        else
-        {
-            monBoutonDebloquer.SetActive(false);
         }
     }
 
@@ -114,7 +154,6 @@ public class ZoneVerrouilee : MonoBehaviour
             return;
         }
 
-        // Assez de pièces ?
         if (GestionnaireArgent.instance.APiecesSuffisantes(coutDeblocage))
         {
             GestionnaireArgent.instance.DepensesPieces(coutDeblocage);
@@ -122,9 +161,8 @@ public class ZoneVerrouilee : MonoBehaviour
         }
         else
         {
-            Debug.Log("Pas assez de pieces ! "
-                + GestionnaireArgent.instance.pieces
-                + "/" + coutDeblocage);
+            int manque = coutDeblocage - GestionnaireArgent.instance.pieces;
+            Debug.Log($"Pas assez de pièces pour {nomZone}. Manque : {manque}");
             AfficherPasAssez();
         }
     }
@@ -133,31 +171,25 @@ public class ZoneVerrouilee : MonoBehaviour
     {
         estVerrouillee = false;
 
-        // Supprime le cadenas
-        if (monCadenas != null)
-            Destroy(monCadenas);
+        // Active tous les composants détectés automatiquement
+        foreach (var comp in composantsDetectes)
+            if (comp != null) comp.enabled = true;
 
-        // Cache le bouton
-        if (monBoutonDebloquer != null)
-            monBoutonDebloquer.SetActive(false);
+        // Réactive les objets
+        foreach (var obj in objetsADesactiver)
+            if (obj != null) obj.SetActive(true);
 
-        // Active ZoneCulture
-        if (zoneCulture != null)
-            zoneCulture.enabled = true;
+        if (monCadenas != null) Destroy(monCadenas);
+        if (monBoutonDebloquer != null) monBoutonDebloquer.SetActive(false);
 
-        Debug.Log("Zone debloquee ! -" + coutDeblocage + " pieces");
+        Debug.Log($"Zone '{nomZone}' débloquée ! -{coutDeblocage} pièces.");
     }
 
     void AfficherPasAssez()
     {
         if (monTextePasAssez == null) return;
-
         monTextePasAssez.SetActive(true);
 
-        // Cache après 2 secondes
-        Invoke("CacherPasAssez", 2f);
-
-        // Position au dessus du player
         if (playerTransform != null)
         {
             Vector3 posEcran = mainCamera.WorldToScreenPoint(
@@ -166,22 +198,22 @@ public class ZoneVerrouilee : MonoBehaviour
             if (posEcran.z > 0)
                 monTextePasAssez.transform.position = posEcran;
         }
+
+        CancelInvoke(nameof(CacherPasAssez));
+        Invoke(nameof(CacherPasAssez), 2f);
     }
 
     void CacherPasAssez()
     {
-        if (monTextePasAssez != null)
-            monTextePasAssez.SetActive(false);
+        if (monTextePasAssez != null) monTextePasAssez.SetActive(false);
     }
 
     void OnTriggerEnter(Collider other)
     {
-        Debug.Log("Trigger touché par : " + other.gameObject.name);
         if (other.CompareTag("Player"))
         {
             playerDedans = true;
             playerTransform = other.transform;
-            Debug.Log("Player detecte dans zone verrouillee !");
         }
     }
 
@@ -200,9 +232,15 @@ public class ZoneVerrouilee : MonoBehaviour
         {
             playerDedans = false;
             playerTransform = null;
-
-            if (monBoutonDebloquer != null)
-                monBoutonDebloquer.SetActive(false);
+            if (monBoutonDebloquer != null) monBoutonDebloquer.SetActive(false);
         }
     }
+
+    public void DebloquerGratuitement()
+    {
+        if (!estVerrouillee) return;
+        Debloquer();
+    }
+
+    public bool EstVerrouillee() => estVerrouillee;
 }

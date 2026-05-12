@@ -6,7 +6,8 @@ public class Client : MonoBehaviour
 {
     [Header("Parametres")]
     public float vitesse = 3f;
-    public float tempsAttente = 5f;
+    public float tempsAttente = 10f;
+    public float tempsAvantFache = 5f; // secondes avant de devenir fache
 
     [Header("Points")]
     public Transform pointFile;
@@ -27,14 +28,43 @@ public class Client : MonoBehaviour
     private GameObject maBulle;
     private Camera mainCamera;
 
+    // Animator
+    private Animator animator;
+
     void Start()
     {
         mainCamera = Camera.main;
+
+        // Recupere l'Animator sur le personnage
+        animator = GetComponent<Animator>();
+        if (animator == null)
+            animator = GetComponentInChildren<Animator>();
+
+        CollerAuSol();
 
         if (bullePrefab != null && canvas != null)
         {
             maBulle = Instantiate(bullePrefab, canvas.transform);
             maBulle.SetActive(false);
+        }
+    }
+
+    void CollerAuSol()
+    {
+        RaycastHit hit;
+        Vector3 origine = new Vector3(
+            transform.position.x,
+            transform.position.y + 10f,
+            transform.position.z
+        );
+
+        if (Physics.Raycast(origine, Vector3.down, out hit, 50f))
+        {
+            transform.position = new Vector3(
+                transform.position.x,
+                hit.point.y + 1f,
+                transform.position.z
+            );
         }
     }
 
@@ -54,6 +84,10 @@ public class Client : MonoBehaviour
     void MarcherVersFile()
     {
         if (pointFile == null) return;
+
+        // Animation marche
+        if (animator != null)
+            animator.SetBool("estFache", false);
 
         Vector3 cible = new Vector3(
             pointFile.position.x,
@@ -81,6 +115,14 @@ public class Client : MonoBehaviour
     void Attendre()
     {
         tempsAttenteActuel += Time.deltaTime;
+
+        // Devient fache apres tempsAvantFache secondes
+        if (animator != null)
+        {
+            if (tempsAttenteActuel >= tempsAvantFache)
+                animator.SetBool("estFache", true);
+        }
+
         if (tempsAttenteActuel >= tempsAttente)
         {
             etat = EtatClient.Achete;
@@ -103,6 +145,10 @@ public class Client : MonoBehaviour
     void Repartir()
     {
         if (maBulle != null) maBulle.SetActive(false);
+
+        // Animation marche pour repartir
+        if (animator != null)
+            animator.SetBool("estFache", false);
 
         if (pointSortie == null)
         {
@@ -138,7 +184,6 @@ public class Client : MonoBehaviour
     void GenererCommande()
     {
         string[] produits = { "Ble", "Oeuf", "Tomate", "Mais", "Carotte" };
-        // correction : UnityEngine.Random explicite
         produitDemande = produits[UnityEngine.Random.Range(0, produits.Length)];
         quantiteDemandee = UnityEngine.Random.Range(1, 4);
 
